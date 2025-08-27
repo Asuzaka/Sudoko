@@ -1,17 +1,33 @@
 type rows = number[]
 type sudoko = rows[]
 
-class Sudoko {
+export class Sudoko {
  
   // Not gonna make logic in class, but i would do that for OOP, but not in case when frontend is involved.
 
-  public generateRandomArrayOfGame () {
+  public generateRandomArrayOfGame (): sudoko {
     // rules
     // #1 : No repeating in a row (1-9)
     // #2 : No repeating in a column (1-9)
-    // #3 : No repeating in a block (3x3) Cube
+    // #3 : No repeating in a block (3x3) validateCubes
+
+    let s:sudoko = [this.generateRandomArray()]
+
+    for(let i=0; i < Infinity;i++){
+      let newrow:rows = this.generateRandomArray()
+      if(this.validateArrayofGame([...s, newrow])){
+        s.push(newrow)
+      }
 
 
+      // if the lenght is 9 then we can break and return array
+      if(s.length === 9) {
+        console.log(`attemps: ${i}`)
+        break;
+      }
+    }
+    
+    return s
 
 
     // Personal comments
@@ -43,17 +59,14 @@ class Sudoko {
   }
 
   private validateArrayofGame(s:sudoko):boolean {
-   let anyerror = false
    // rows
    for (const i of s){
-      if(!this.validateRows(i)) anyerror = true
+      if (!this.validateRows(i)) return false
    }
-   if(anyerror) return false
    // validateColumns
    if(!this.validateColumns(s)) return false
    // cubes (3x3)
-    
-   if(anyerror) return false
+   if(!this.validateCubes(s)) return false
    return true
    // Personal comments
   }
@@ -92,7 +105,27 @@ class Sudoko {
     // naturally sudoko array has an array of rows, so there is always 9 columns.
   }
 
-  private validateCubes(s:sudoko):boolean{
-    return true
-  }
+  private validateCubes(s: sudoko): boolean {
+    
+    // Loop over each box (9 total: 3 rows × 3 cols of boxes)
+
+    for (let boxRow = 0; boxRow < 3; boxRow++) {
+      for (let boxCol = 0; boxCol < 3; boxCol++) {
+       let a = new Set<number>();
+
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            const row = boxRow * 3 + r;
+            const col = boxCol * 3 + c;
+            if (row < s.length) {          // check only filled rows
+             const val = s[row][col];
+             if (a.has(val)) return false; // duplicate inside cube
+             a.add(val);
+           }
+          }
+        }
+      }
+    }
+    return true;
+  } 
 }
