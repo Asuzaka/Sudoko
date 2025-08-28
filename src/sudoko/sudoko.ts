@@ -1,131 +1,202 @@
-type rows = number[]
-type sudoko = rows[]
+type rows = number[];
+type sudoko = rows[];
 
+/**
+ * Ultra-fast Sudoku generator using bit masks + backtracking.
+ * - O(1) constraint checks (row/col/box) via bitmasks
+ * - Randomized fill for variability
+ * - Diagonal boxes prefill to shrink search space (optional, enabled)
+ * - No re-validating whole board; validate incrementally only
+ */
 export class Sudoko {
- 
-  // Not gonna make logic in class, but i would do that for OOP, but not in case when frontend is involved.
+  // 9x9 board, 0 means empty
+  private board: sudoko = Array.from({ length: 9 }, () => Array(9).fill(0));
 
-  public generateRandomArrayOfGame (): sudoko {
-    // rules
-    // #1 : No repeating in a row (1-9)
-    // #2 : No repeating in a column (1-9)
-    // #3 : No repeating in a block (3x3) validateCubes
+  // Bit masks: bit k (1<<k) indicates number (k+1) is used.
+  private rowMask = new Uint16Array(9); // 9 rows
+  private colMask = new Uint16Array(9); // 9 cols
+  private boxMask = new Uint16Array(9); // 9 boxes
 
-    let s:sudoko = [this.generateRandomArray()]
+  // Scratch array reused to avoid allocations
+  private candidates = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
-    for(let i=0; i < Infinity;i++){
-      let newrow:rows = this.generateRandomArray()
-      if(this.validateArrayofGame([...s, newrow])){
-        s.push(newrow)
+  /** Public API: generates a *completed* valid Sudoku board (9x9). */
+  public generateCompletedBoard(): sudoko {
+    this.reset();
+    this.prefillDiagonalBoxes();   // big win for performance
+    this.fillFrom(0, 0);
+    // deep copy to detach internal board
+    return this.board.map(row => row.slice());
+  }
+
+  /**
+   * Public API: generate a *puzzle* by removing cells from a completed board.
+   * - holes: how many cells to remove (rough difficulty knob)
+   * - ensureUnique: if true, keep only puzzles with a unique solution (slower)
+   */
+  public generatePuzzle(holes = 50, ensureUnique = false): sudoko {
+    const full = this.generateCompletedBoard();
+    const coords: Array<[number, number]> = [];
+    for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) coords.push([r, c]);
+    this.shuffle(coords);
+
+    const puzzle = full.map(r => r.slice());
+
+    let removed = 0;
+    for (const [r, c] of coords) {
+      if (removed >= holes) break;
+      const backup = puzzle[r][c];
+      puzzle[r][c] = 0;
+
+      if (ensureUnique) {
+        if (!this.hasUniqueSolution(puzzle)) {
+          puzzle[r][c] = backup; // revert
+          continue;
+        }
       }
-
-
-      // if the lenght is 9 then we can break and return array
-      if(s.length === 9) {
-        console.log(`attemps: ${i}`)
-        break;
-      }
+      removed++;
     }
-    
-    return s
-
-
-    // Personal comments
-
-    // first concern was how to return? alike the stucture? i could alike return
-    // an array of rows [[1-9], [1-9]] or other way around columns, i could also
-    // return cubes(3x3) e.g: [[1,2,3, !2row: 4,5,7 ...]] and last option was
-    // returning just 81 numbers in a a single array [(1-9)x9]
+    return puzzle;
   }
 
+  // -------------------- Core solver/generator --------------------
 
-  private generateRandomArray(): rows {
-   // static array of row
-   let a = [1,2,3,4,5,6,7,8,9];
-
-   for (let i = 0; i < 9; i++) {
-    let d = Math.floor(Math.random() * (9 - i)); // pick random index from remaining
-    let c = a.splice(d, 1)[0];                   // remove that element
-    a.push(c);                                   // put it at the end of the same array
-   }
-
-   return a;
-
-   // Personal comments
-   
-   // first i idea was just to randomazi and check if there is no same number in array of row,
-   // but that would be expensive. so i came up with better idea of having static array and creating new
-   // by taking and deleting from it randomly. but later then i end up just shuffling. 
-  }
-
-  private validateArrayofGame(s:sudoko):boolean {
-   // rows
-   for (const i of s){
-      if (!this.validateRows(i)) return false
-   }
-   // validateColumns
-   if(!this.validateColumns(s)) return false
-   // cubes (3x3)
-   if(!this.validateCubes(s)) return false
-   return true
-   // Personal comments
-  }
-
-  private validateRows(r:rows):boolean{
-    
-    let a = new Set()
-    
-    for (const i of r){
-      a.add(i)
-    }
-
-    return a.size === 9
-
-    // Personal comments
-    
-    // too loops would work but too much expensive, came up with better idea of using Set.
-  }
-
-  private validateColumns(s:sudoko):boolean{
-    
+  private reset() {
     for (let i = 0; i < 9; i++) {
-      // iteration by columns 
-      let a = new Set()
-      for (let k = 0; k < s.length; k++) {
-        a.add(s[k][i])
-      }
-
-      if(a.size !== s.length) return false
+      this.rowMask[i] = 0;
+      this.colMask[i] = 0;
+      this.boxMask[i] = 0;
+      for (let j = 0; j < 9; j++) this.board[i][j] = 0;
     }
-      
-    return true 
-      
-    // Personal comments
-      
-    // naturally sudoko array has an array of rows, so there is always 9 columns.
   }
 
-  private validateCubes(s: sudoko): boolean {
-    
-    // Loop over each box (9 total: 3 rows × 3 cols of boxes)
+  private boxIndex(r: number, c: number): number {
+    return ((r / 3) | 0) * 3 + ((c / 3) | 0);
+  }
 
-    for (let boxRow = 0; boxRow < 3; boxRow++) {
-      for (let boxCol = 0; boxCol < 3; boxCol++) {
-       let a = new Set<number>();
+  private isAllowed(r: number, c: number, n: number): boolean {
+    const bit = 1 << (n - 1);
+    return (
+      (this.rowMask[r] & bit) === 0 &&
+      (this.colMask[c] & bit) === 0 &&
+      (this.boxMask[this.boxIndex(r, c)] & bit) === 0
+    );
+  }
 
-        for (let r = 0; r < 3; r++) {
-          for (let c = 0; c < 3; c++) {
-            const row = boxRow * 3 + r;
-            const col = boxCol * 3 + c;
-            if (row < s.length) {          // check only filled rows
-             const val = s[row][col];
-             if (a.has(val)) return false; // duplicate inside cube
-             a.add(val);
-           }
-          }
+  private place(r: number, c: number, n: number) {
+    const bit = 1 << (n - 1);
+    this.board[r][c] = n;
+    this.rowMask[r] |= bit;
+    this.colMask[c] |= bit;
+    this.boxMask[this.boxIndex(r, c)] |= bit;
+  }
+
+  private unplace(r: number, c: number, n: number) {
+    const bit = 1 << (n - 1);
+    this.board[r][c] = 0;
+    this.rowMask[r] &= ~bit;
+    this.colMask[c] &= ~bit;
+    this.boxMask[this.boxIndex(r, c)] &= ~bit;
+  }
+
+  /** Fill cells row-major with randomized candidates and early pruning. */
+  private fillFrom(r: number, c: number): boolean {
+    if (r === 9) return true; // solved
+
+    const nextR = c === 8 ? r + 1 : r;
+    const nextC = c === 8 ? 0 : c + 1;
+
+    // Skip prefilled cells
+    if (this.board[r][c] !== 0) return this.fillFrom(nextR, nextC);
+
+    const nums = this.candidates;
+    this.shuffle(nums);
+
+    for (let i = 0; i < 9; i++) {
+      const n = nums[i];
+      if (!this.isAllowed(r, c, n)) continue;
+      this.place(r, c, n);
+      if (this.fillFrom(nextR, nextC)) return true;
+      this.unplace(r, c, n);
+    }
+    return false;
+  }
+
+  /** Prefill the 3 diagonal 3×3 boxes with random valid numbers. */
+  private prefillDiagonalBoxes() {
+    for (let b = 0; b < 9; b += 4) {
+      // b = 0, 4, 8 are diagonal boxes
+      const nums = this.candidates.slice();
+      this.shuffle(nums);
+
+      let idx = 0;
+      const startR = ((b / 3) | 0) * 3;
+      const startC = (b % 3) * 3;
+      for (let dr = 0; dr < 3; dr++) {
+        for (let dc = 0; dc < 3; dc++) {
+          const n = nums[idx++];
+          const r = startR + dr;
+          const c = startC + dc;
+          this.place(r, c, n);
         }
       }
     }
-    return true;
-  } 
+  }
+
+  // -------------------- Utility: uniqueness checking --------------------
+
+  /**
+   * Returns true if the puzzle has a unique solution.
+   * Uses a capped backtracking counter: stop after finding 2 solutions.
+   */
+  private hasUniqueSolution(puzzle: sudoko): boolean {
+    // Load puzzle into board + masks
+    this.reset();
+    for (let r = 0; r < 9; r++) {
+      for (let c = 0; c < 9; c++) {
+        const v = puzzle[r][c];
+        if (v !== 0) {
+          if (!this.isAllowed(r, c, v)) return false; // invalid puzzle
+          this.place(r, c, v);
+        }
+      }
+    }
+    let solutions = 0;
+    const dfs = (r: number, c: number): boolean => {
+      if (r === 9) {
+        solutions++;
+        return solutions >= 2; // early exit if more than 1
+      }
+      const nextR = c === 8 ? r + 1 : r;
+      const nextC = c === 8 ? 0 : c + 1;
+
+      if (this.board[r][c] !== 0) return dfs(nextR, nextC);
+
+      // Small heuristic: try least-constrained first via mask-based candidates
+      const mask = this.rowMask[r] | this.colMask[c] | this.boxMask[this.boxIndex(r, c)];
+      // iterate numbers 1..9 by available bits
+      for (let n = 1; n <= 9; n++) {
+        const bit = 1 << (n - 1);
+        if (mask & bit) continue;
+        this.place(r, c, n);
+        if (dfs(nextR, nextC)) return true; // already 2+
+        this.unplace(r, c, n);
+      }
+      return false;
+    };
+    dfs(0, 0);
+    return solutions === 1;
+  }
+
+  // -------------------- Helpers --------------------
+
+  private shuffle<T>(arr: T[]): void {
+    // Fisher–Yates
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = (Math.random() * (i + 1)) | 0;
+      const tmp = arr[i];
+      arr[i] = arr[j];
+      arr[j] = tmp;
+    }
+  }
 }

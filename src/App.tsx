@@ -8,7 +8,7 @@ export default function App() {
 
   function handleClick(){
     const game = new Sudoko()
-    console.log(game.generateRandomArrayOfGame())
+    console.log(game.generatePuzzle(25, true))
   }
 
   return (
