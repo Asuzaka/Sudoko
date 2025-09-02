@@ -1,5 +1,5 @@
-type rows = number[];
-type sudoko = rows[];
+export type rows = number[];
+export type sudoko = rows[];
 
 /**
  * Ultra-fast Sudoku generator using bit masks + backtracking.
