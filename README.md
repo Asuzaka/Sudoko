@@ -27,7 +27,8 @@ It features difficulty levels, keyboard navigation, live validation, and a clean
 
 ## 📸 Screenshots
 
-![Game Screenshot](https://github.com/asuzaka/sudoko/)
+![Game Screenshot](https://github.com/Asuzaka/Sudoko/blob/main/screenshot/1.png)
+
 
 ---
 
