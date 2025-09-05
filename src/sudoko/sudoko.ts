@@ -23,10 +23,10 @@ export class Sudoko {
   /** Public API: generates a *completed* valid Sudoku board (9x9). */
   public generateCompletedBoard(): sudoko {
     this.reset();
-    this.prefillDiagonalBoxes();   // big win for performance
+    this.prefillDiagonalBoxes(); // big win for performance
     this.fillFrom(0, 0);
     // deep copy to detach internal board
-    return this.board.map(row => row.slice());
+    return this.board.map((row) => row.slice());
   }
 
   /**
@@ -40,7 +40,7 @@ export class Sudoko {
     for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) coords.push([r, c]);
     this.shuffle(coords);
 
-    const puzzle = full.map(r => r.slice());
+    const puzzle = full.map((r) => r.slice());
 
     let removed = 0;
     for (const [r, c] of coords) {
@@ -109,7 +109,7 @@ export class Sudoko {
     // Skip prefilled cells
     if (this.board[r][c] !== 0) return this.fillFrom(nextR, nextC);
 
-    const nums = this.candidates;
+    const nums = [...this.candidates]; // copy to avoid mutation side-effects
     this.shuffle(nums);
 
     for (let i = 0; i < 9; i++) {
@@ -173,7 +173,8 @@ export class Sudoko {
       if (this.board[r][c] !== 0) return dfs(nextR, nextC);
 
       // Small heuristic: try least-constrained first via mask-based candidates
-      const mask = this.rowMask[r] | this.colMask[c] | this.boxMask[this.boxIndex(r, c)];
+      const mask =
+        this.rowMask[r] | this.colMask[c] | this.boxMask[this.boxIndex(r, c)];
       // iterate numbers 1..9 by available bits
       for (let n = 1; n <= 9; n++) {
         const bit = 1 << (n - 1);
