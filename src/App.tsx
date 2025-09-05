@@ -1,33 +1,42 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Sudoko, type sudoko } from "./sudoko/sudoko";
+import CustomInput from "./components/CustomInput";
+
+const SIZE = 9;
 
 export default function App() {
-  const [puzzle, setPuzzle] = useState<sudoko>([]);
-  const [solution, setSolution] = useState<sudoko>([]);
+  const puzzleRef = useRef<sudoko>([]);
+  const solutionRef = useRef<sudoko>([]);
   const [userBoard, setUserBoard] = useState<sudoko>([]);
+  const boardDivs = useRef<(HTMLDivElement | null)[][]>([]);
+  const [active, setActive] = useState({ row: 0, column: 0 });
+
+  //  Helper for cloning a board
+  const cloneBoard = (board: sudoko) => board.map((r) => [...r]);
 
   function generateNewGame() {
     const game = new Sudoko();
     const solved = game.generateCompletedBoard();
     const puzzle = game.generatePuzzle(50, true);
-    const clone = puzzle.map((r) => r.slice());
 
-    console.log(puzzle);
-
-    // set States
-    setPuzzle(puzzle);
-    setSolution(solved);
-    setUserBoard(puzzle.map((r) => r.slice())); // clone starting state
+    puzzleRef.current = puzzle;
+    solutionRef.current = solved;
+    setUserBoard(cloneBoard(puzzle));
   }
 
-  function handleValueinput(r: number, c: number, val: string) {
-    if (!/^[1-9]$/.test(val)) return; // only 1–9
-    const newBoard = userBoard.map((row) => row.slice());
-    newBoard[r][c] = parseInt(val, 10);
-    setUserBoard(newBoard);
+  function handleValueInput(r: number, c: number, val: string) {
+    if (!/^[1-9]$/.test(val)) return;
+    setUserBoard((prev) => {
+      const newBoard = cloneBoard(prev);
+      newBoard[r][c] = parseInt(val, 10);
+      return newBoard;
+    });
   }
 
-  const checkBoard = () => {
+  //  Compute board status only when relevant data changes
+  const boardStatus = useMemo(() => {
+    const puzzle = puzzleRef.current;
+    const solution = solutionRef.current;
     return userBoard.map((row, r) =>
       row.map((val, c) => {
         if (puzzle[r][c] !== 0) return "prefilled";
@@ -35,47 +44,68 @@ export default function App() {
         return val === solution[r][c] ? "correct" : "wrong";
       })
     );
-  };
+  }, [userBoard]);
 
-  const boardStatus = checkBoard();
+  //  Global navigation via arrow keys
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      setActive(({ row, column }) => {
+        if (e.key === "ArrowUp" && row > 0) return { row: row - 1, column };
+        if (e.key === "ArrowDown" && row < SIZE - 1)
+          return { row: row + 1, column };
+        if (e.key === "ArrowLeft" && column > 0)
+          return { row, column: column - 1 };
+        if (e.key === "ArrowRight" && column < SIZE - 1)
+          return { row, column: column + 1 };
+        return { row, column };
+      });
+    };
+
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, []);
+
+  //  Focus active cell
+  useEffect(() => {
+    const { row, column } = active;
+    const target = boardDivs.current[row]?.[column];
+    if (target) target.focus();
+  }, [active]);
 
   return (
     <div className="flex items-center justify-center h-screen">
-      <div className="bg-orange-100 p-56 rounded-lg">
-        {/*Panel for sudoko actions*/}
-        <div className="flex items-center justify-between">
-         <h2>Sudoko</h2>
-         <button onClick={generateNewGame}>Start!</button>
+      <div className="bg-orange-100 p-10 rounded-lg">
+        {/* Panel for sudoku actions */}
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold">Sudoko</h2>
+          <button
+            onClick={generateNewGame}
+            className="px-3 py-1 bg-blue-500 text-white rounded"
+          >
+            Start!
+          </button>
         </div>
-        <div>
-          <div className="grid grid-rows-9">
-            {userBoard.map((row, r) => (
-              <div
-                key={r}
-                className="px-1 py-1 border-2 rounded-sm border-black flex"
-              >
-                {row.map((value, c) => {
-                  const status = boardStatus[r][c];
-                  const isPrefilled = puzzle[r][c] !== 0;
-                  return (
-                    <input
-                      key={c}
-                      type="text"
-                      maxLength={1}
-                      disabled={isPrefilled}
-                      value={value === 0 ? "" : value}
-                      onChange={(e) => handleValueinput(r, c, e.target.value)}
-                      className={`w-10 h-10 text-center border
-                  ${status === "prefilled" ? "bg-gray-200 font-bold" : ""}
-                  ${status === "correct" ? "bg-green-200" : ""}
-                  ${status === "wrong" ? "bg-red-200" : ""}
-                `}
-                    />
-                  );
-                })}
-              </div>
-            ))}
-          </div>
+        <div className="grid grid-rows-9 gap-1">
+          {userBoard.map((row, r) => (
+            <div key={r} className="flex gap-1">
+              {row.map((value, c) => {
+                const status = boardStatus[r][c];
+                const isPrefilled = puzzleRef.current[r][c] !== 0;
+                return (
+                  <CustomInput
+                    key={c}
+                    r={r}
+                    c={c}
+                    value={value}
+                    status={status}
+                    isPrefilled={isPrefilled}
+                    board={boardDivs.current}
+                    func={handleValueInput}
+                  />
+                );
+              })}
+            </div>
+          ))}
         </div>
       </div>
     </div>
