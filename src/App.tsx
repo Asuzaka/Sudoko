@@ -9,6 +9,9 @@ export default function App() {
   const solutionRef = useRef<sudoko>([]);
   const [userBoard, setUserBoard] = useState<sudoko>([]);
   const boardDivs = useRef<(HTMLDivElement | null)[][]>([]);
+  const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">(
+    "medium"
+  );
   const [active, setActive] = useState({ row: 0, column: 0 });
 
   //  Helper for cloning a board
@@ -17,7 +20,14 @@ export default function App() {
   function generateNewGame() {
     const game = new Sudoko();
     const solved = game.generateCompletedBoard();
-    const puzzle = game.generatePuzzle(50, true);
+
+    // set holes by difficulty
+    let holes = 50;
+    if (difficulty === "easy") holes = 30;
+    if (difficulty === "medium") holes = 50;
+    if (difficulty === "hard") holes = 60;
+
+    const puzzle = game.generatePuzzle(holes, true);
 
     puzzleRef.current = puzzle;
     solutionRef.current = solved;
@@ -74,17 +84,40 @@ export default function App() {
 
   return (
     <div className="flex items-center justify-center h-screen">
-      <div className="bg-orange-100 p-10 rounded-lg">
-        {/* Panel for sudoku actions */}
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold">Sudoko</h2>
-          <button
-            onClick={generateNewGame}
-            className="px-3 py-1 bg-blue-500 text-white rounded"
-          >
-            Start!
-          </button>
+      <div className="bg-orange-100 p-10 rounded-lg flex flex-col items-center">
+        {/* Header Panel */}
+        <div className="flex items-center justify-between bg-white shadow px-6 py-4 rounded-lg mb-4 gap-4">
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <span role="img" aria-label="puzzle">
+              🧩
+            </span>{" "}
+            Sudoku
+          </h2>
+
+          <div className="flex items-center gap-5">
+            <div className="relative w-48">
+              <select
+                className="cursor-pointer w-full appearance-none rounded-lg border border-gray-300 bg-white px-4 py-2 pr-8 text-sm shadow-sm"
+                value={difficulty}
+                onChange={(e) =>
+                  setDifficulty(e.target.value as "easy" | "medium" | "hard")
+                }
+              >
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+            </div>
+
+            <button
+              onClick={generateNewGame}
+              className="bg-orange-500 text-white px-4 py-2 rounded-lg shadow hover:bg-orange-600 transition"
+            >
+              Start Game
+            </button>
+          </div>
         </div>
+        {/* Sudoku Board  */}
         <div className="grid grid-rows-9 gap-1">
           {userBoard.map((row, r) => (
             <div key={r} className="flex gap-1">
